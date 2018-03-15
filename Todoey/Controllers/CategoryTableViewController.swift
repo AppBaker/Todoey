@@ -7,18 +7,19 @@
 //
 
 import UIKit
-import CoreData
+import RealmSwift
 
 class CategoryTableViewController: UITableViewController {
     
-    let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
-    var categoryArray = [Category]()
+    let realm = try! Realm()
+    
+    var categories : Results<Category>?
 
     override func viewDidLoad() {
         super.viewDidLoad()
         
+        
         loadData()
-
 
     }
     
@@ -30,14 +31,14 @@ class CategoryTableViewController: UITableViewController {
     }
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        // #warning Incomplete implementation, return the number of rows
-        return categoryArray.count
+
+        return categories?.count ?? 5
     }
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "Category")
         
-        cell?.textLabel?.text = categoryArray[indexPath.row].name
+        cell?.textLabel?.text = categories?[indexPath.row].name ?? "No Categories Added yet"
         
         return cell!
         
@@ -61,46 +62,53 @@ class CategoryTableViewController: UITableViewController {
         
         let deleteAction = UITableViewRowAction(style: .destructive, title: "Delete") { (action, indexPath) in
             
-            self.context.delete(self.categoryArray[indexPath.row])
-            self.categoryArray.remove(at: indexPath.row)
-            self.tableView.deleteRows(at: [indexPath], with: .fade)
-            self.saveCategory()
+            do {
+                try self.realm.write {
+                    self.realm.delete(self.categories![indexPath.row])
+                }
+            }
+            catch {
+                print("Rename category \(error)")
+            }
+            
+            self.tableView.reloadData()
+            
         }
         
         let renameAction = UITableViewRowAction(style: .normal, title: "Rename") { (action, indexPath) in
             
-            let alert = UIAlertController(title: "Change Category *\(self.categoryArray[indexPath.row].name!)*", message: "", preferredStyle: .alert)
+            let alert = UIAlertController(title: "Change Category *\(self.categories![indexPath.row].name)*", message: "", preferredStyle: .alert)
             let okAction = UIAlertAction(title: "Ok", style: .default, handler: { (action) in
                 if alert.textFields?.first?.text != "" {
-                    self.categoryArray[indexPath.row].name = alert.textFields?.first?.text!
-                    self.saveCategory()
+                    
+                    do {
+                        try self.realm.write {
+                            
+                            self.categories![indexPath.row].name = (alert.textFields?.first?.text)!
+                        }
+                    }
+                    catch {
+                        print("Rename category \(error)")
+                    }
+                    
+                    self.tableView.reloadData()
+                    
+                    //MARK: RENAME ACTION
+
                 }
-                
-                if alert.textFields?.first?.text == "999" {
-                    action.isEnabled = false
-                } else {
-                    action.isEnabled = true
-                }
-                
-                
+
             })
             
-            let removeAllAction = UIAlertAction(title: "Remove All", style: .default, handler: { (action) in
-                print("Remove All")
-            })
-            
-            let cancelAction = UIAlertAction(title: "Cancel", style: .cancel, handler: nil)
-            
+            let cancelAction = UIAlertAction(title: "Cancel", style: .destructive, handler: nil)
+     
             alert.addTextField(configurationHandler: { (textField) in
                 
                 textField.placeholder = "Category name"
+                textField.autocapitalizationType = .words
 
-                
             })
-            alert.addAction(okAction)
-            alert.addAction(removeAllAction)
             alert.addAction(cancelAction)
-            
+            alert.addAction(okAction)
             
             self.present(alert, animated: true, completion: nil)
         }
@@ -115,15 +123,14 @@ class CategoryTableViewController: UITableViewController {
         
         let alert = UIAlertController(title: "Add category", message: "Create a new category", preferredStyle: .alert)
         let addAction = UIAlertAction(title: "Add", style: .default) { (action) in
-            let newCategory = Category(context: self.context)
-            newCategory.name = alert.textFields?.first?.text
-            self.categoryArray.insert(newCategory, at: 0)
-            
-            self.saveCategory()
+            let newCategory = Category()
+            newCategory.name = (alert.textFields?.first?.text)!
+            self.save(category: newCategory)
         }
         let cancelAction = UIAlertAction(title: "Cancel", style: .cancel, handler: nil)
         alert.addTextField { (textField) in
             textField.placeholder = "Create new category"
+            textField.autocapitalizationType = .words
         }
         alert.addAction(addAction)
         alert.addAction(cancelAction)
@@ -133,22 +140,19 @@ class CategoryTableViewController: UITableViewController {
     
         //MARK: - Data Manipulation Methods
     
-    func loadData(with request: NSFetchRequest<Category> = Category.fetchRequest()) {
+    func loadData() {
         
-        do {
-            categoryArray = try context.fetch(request)
-            categoryArray.reverse()
-        }
-        catch {
-            print("Error fetching data from context \(error)")
-        }
-        
+        categories = realm.objects(Category.self)
+
+        tableView.reloadData()
     }
     
-    func saveCategory() {
+    func save(category: Category) {
         
         do {
-            try context.save()
+            try realm.write {
+                realm.add(category)
+            }
         }
         catch {
             print("Error saving context \(error)")
@@ -162,7 +166,7 @@ class CategoryTableViewController: UITableViewController {
         let destinationVC = segue.destination as! TodoListViewController
         
         if let indexPath = tableView.indexPathForSelectedRow {
-            destinationVC.selectedCategory = categoryArray[indexPath.row]
+            destinationVC.selectedCategory = categories?[indexPath.row]
         }
         
     }
